@@ -1,0 +1,227 @@
+#include <EEPROM.h>
+
+int addrs[] = {50,100,150,200,250,300,350};
+
+#define FASTLED_ALLOW_INTERRUPTS 0
+#define FASTLED_INTERRUPT_RETRY_COUNT 10
+
+#include "FastLED.h"
+
+#define RAPPORTO_BIANCO_COLORE 115 //0 significa solo BIANCO - 255 significa SOLO COLORE
+
+#define NUM_STRIPS 3
+#define NUM_LEDS_PER_STRIP 213
+#define NUM_LEDS NUM_LEDS_PER_STRIP * NUM_STRIPS
+
+#define NUM_EXHIBIT 12
+
+CRGB leds[NUM_STRIPS * NUM_LEDS_PER_STRIP];
+
+uint16_t colorIndex[NUM_LEDS];
+
+uint16_t bottomSpot[] = {0,50,100,150,195,224,290,340,400,450,510,570};
+uint16_t upperSpot[] = {50,100,150,195,224,290,340,400,450,510,570,639};
+
+
+bool event = false;
+
+uint16_t potM = 0;
+uint16_t pos = 0;
+
+bool a_up = false;
+bool b_up = false;
+bool c_up = false;
+bool d_up = false;
+
+
+uint8_t brightVal = 0;
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial3.begin(9600);
+  //Serial.begin(9600);
+  Serial3.flush();
+  
+  // tell FastLED there's 60 NEOPIXEL leds on pin 10, starting at index 0 in the led array
+  FastLED.addLeds<WS2812B, 7,GRB>(leds, 0, NUM_LEDS_PER_STRIP);
+  // tell FastLED there's 60 NEOPIXEL leds on pin 11, starting at index 60 in the led array
+  FastLED.addLeds<WS2812B, 11,GRB>(leds, NUM_LEDS_PER_STRIP, NUM_LEDS_PER_STRIP);
+  // tell FastLED there's 60 NEOPIXEL leds on pin 12, starting at index 120 in the led array
+  FastLED.addLeds<WS2812B, 12,GRB>(leds, 2 * NUM_LEDS_PER_STRIP, NUM_LEDS_PER_STRIP);
+
+  for (int i=0; i<NUM_EXHIBIT; i++) {
+    colorIndex[i] = random8();
+  }
+
+
+  FastLED.setBrightness(255);
+  FastLED.setTemperature(0xFF9329);
+//  FastLED.clear();
+//  FastLED.show();
+
+  potM = EEPROM.read(addrs[0]);
+  pos = EEPROM.read(addrs[1]);
+  
+  a_up = EEPROM.read(addrs[2]);
+  b_up = EEPROM.read(addrs[3]);
+  c_up = EEPROM.read(addrs[4]);
+  d_up = EEPROM.read(addrs[5]);
+
+  brightVal = EEPROM.read(addrs[6]);
+
+  event = true;
+
+}
+
+String inSer;
+char inBuff[12];
+
+uint16_t x = 0;
+uint16_t beamIndex = 0;
+
+bool play = false;
+
+unsigned long gameTime = 0;
+unsigned long gameSpeed = 2000;
+int jj = 11;
+
+//0   1   2   3 4 5 6 7 8 9 10  11
+//0   11  10  9 8 7 6 5 4 3 2   1 
+//uint8_t newPos[] = {0,11,10,9,8,7,6,5,4,3,2,1};
+uint8_t newPos[] = {11,0,1,2,3,4,5,6,7,8,9,10};
+
+int kk = 0;
+
+bool verso = true;
+
+unsigned long rT = 0;
+
+void loop() {
+  
+  if (Serial3.available()) {
+    inSer = Serial3.readStringUntil('\n');
+    if (inSer.length() == 14) {
+      inSer.toCharArray(inBuff, 14);
+      if (inBuff[12] == 'q') {
+        potM = inBuff[1] - '0';
+        if (potM > 9) potM = potM - 7;
+        potM = 11 - potM;
+        pos = inBuff[3] - '0';
+        if (pos > 9) pos = pos - 7;
+        pos = 11 - pos;
+        a_up = inBuff[5] - '0';
+        b_up = inBuff[7] - '0';
+        c_up = inBuff[9] - '0';
+        d_up = inBuff[11] - '0';
+        event = true;
+
+        EEPROM.write(addrs[0],potM);
+        EEPROM.write(addrs[1],pos);
+        EEPROM.write(addrs[2],a_up);
+        EEPROM.write(addrs[3],b_up);
+        EEPROM.write(addrs[4],c_up);
+        EEPROM.write(addrs[5],d_up);
+          
+      }
+    }    
+  }
+
+  if (event) {
+  
+    FastLED.clear();
+    
+    if (a_up) {
+      //MAN
+      if (b_up) {
+        //SPOT
+        FastLED.setBrightness(255);
+        
+        for (uint16_t j=0; j<NUM_LEDS; j++) {
+          if ((j >= bottomSpot[newPos[pos]]) && (j < upperSpot[newPos[pos]])) {
+            leds[j] = CHSV(colorIndex[pos],RAPPORTO_BIANCO_COLORE,255);
+          }
+          else {
+            leds[j] = CHSV(0,0,brightVal);
+          }
+        } 
+
+        FastLED.show();
+        Serial3.flush();
+        
+      }
+      else {
+        FastLED.setBrightness(255);
+        //WHITE
+        brightVal = map(potM,0,11,0,255);
+        EEPROM.write(addrs[6],brightVal);
+        for (uint16_t j=0; j<NUM_LEDS; j++) {
+          leds[j] = CHSV(0,0,brightVal);
+        }  
+        FastLED.show();
+        Serial3.flush();
+
+      }
+      play = false;
+    }
+    else {
+      play = true;
+      kk = 0;
+      gameTime = 0;
+      FastLED.clear();
+      FastLED.show();
+    }
+    event = false;
+  }
+
+  if (play) {
+    // AUTO
+    if (b_up) {
+      
+      brightVal = 50;
+      gameSpeed = 60000;
+  
+      if ((millis() - gameTime) > gameSpeed) {
+        Serial.println("AUTO SPOT");
+        FastLED.clear();
+        gameTime = millis();
+  
+        jj = random(0,11);
+  
+        for (uint16_t j=0; j<NUM_LEDS; j++) {
+          if ((j >= bottomSpot[newPos[jj]]) && (j < upperSpot[newPos[jj]])) {
+            leds[j] = CHSV(colorIndex[jj],RAPPORTO_BIANCO_COLORE,255);
+          }
+          else {
+            leds[j] = CHSV(0,0,brightVal);
+          }
+        } 
+  
+        FastLED.show();
+      }
+    }
+    else {
+      if ((millis() - rT) > 50) {
+        rT = millis();
+        leds[kk] = CHSV(map(kk,0,NUM_LEDS,0,255),255,255);
+        FastLED.show();
+        
+        for (uint16_t i = 0; i< NUM_LEDS; i++) {
+          leds[i].nscale8(250);
+        }
+
+        if (verso) {
+          kk++;
+        }
+        else {
+          kk--;
+        }
+        
+        if ((kk >= NUM_LEDS) || (kk < 0)) {
+          verso = !verso;
+        }
+      } 
+    }
+    
+  }
+
+}
