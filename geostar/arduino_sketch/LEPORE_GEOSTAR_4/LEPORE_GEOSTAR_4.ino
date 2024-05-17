@@ -1,39 +1,35 @@
 #define ASK_TIMEOUT 2000
-#define ASK_MINWAIT 1000
+#define ASK_MINWAIT 500
 #define TIMEOUT_RFID 60000
 
-#define REL_PIN_UP 9
-#define REL_PIN_DOWN 8
+#define REL_PIN_UP 6
+#define REL_PIN_DOWN 7
 
-#define R_LED 14
-#define G_LED 15
-#define B_LED 16
+#define TIME_DOWN 14  // s
+#define TIME_PAUSE 5  // s
+#define TIME_UP 15    // s
 
-#include <WiFi.h>
-WiFiClient localClient;
-WiFiUDP Udp;
+#include <SPI.h>
+#include <Ethernet.h>
+#include <EthernetUdp.h>
 
-// WIFI
-int status = WL_IDLE_STATUS;
-const char* ssid = "GL-lab";
-const char* password = "ciao56ciao";
-unsigned long tReconnect = 0;
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+
+EthernetClient localClient;
+EthernetUDP Udp;
 
 // RFID TCP
-const uint port = 10001;
-const char* ip = "192.168.10.10";
-IPAddress localIP = IPAddress(192, 168, 10, 20);
-IPAddress gateway = IPAddress(192, 168, 10, 1);
-IPAddress subnet = IPAddress(255, 255, 255, 0);
+const int port = 10001;
+const char* RFID_ip = "192.168.10.10";
 
 // BS UDP
-const uint UDPport = 5000;  //57862
+const int UDPport = 5000;  //57862
 char receiveBuffer[4];
 const char* bs_ip = "192.168.10.255";
 char iUDP[2];
 char oUDP[2];
 
-#define DEB 1
+#define DEB 0
 
 byte ask_rfid[] = { 0x02, 0x00, 0x09, 0xFF, 0xB0, 0x01, 0x00, 0x18, 0x43 };
 
@@ -69,12 +65,39 @@ int nRFID = 0;
 
 void setup() {
   //BREATHE
-  delay(1000);
+  delay(100);
 
   //LED
-  pinMode(R_LED, OUTPUT);
-  pinMode(G_LED, OUTPUT);
-  pinMode(B_LED, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(300);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(300);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(300);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(300);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(300);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(300);
+
+  delay(75000);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(300);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(300);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(300);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(300);
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(300);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(300);
+  
 
   //RELAY
   pinMode(REL_PIN_UP, OUTPUT);
@@ -83,20 +106,27 @@ void setup() {
   digitalWrite(REL_PIN_DOWN, HIGH);
 
   //SERIAL
-  Serial.begin(115200);
+  if (DEB) Serial.begin(115200);
   delay(100);
 
-  //WIFI
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+  //ETHERNET
+  if (DEB) Serial.println("Connecting: ");
+
+  while (Ethernet.begin(mac) == 0) {
     if (DEB) Serial.print(".");
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(1000);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(1000);
   }
 
-  if (DEB) Serial.println("CONNECTED:");
-  if (DEB) Serial.println(WiFi.localIP());
+  // give the Ethernet shield a second to initialize:
+  delay(1000);
 
-  localClient.connect(ip, port);
+  if (DEB) Serial.println("CONNECTED:");
+  if (DEB) Serial.println(Ethernet.localIP());
+
+  localClient.connect(RFID_ip, port);
   delay(500);
 
   //UDP
@@ -126,17 +156,10 @@ int strumento = 0;
 
 bool checking_risposta = false;
 
-unsigned long rT = 0, gT = 0, bT = 0;
-int rI = 0, gI = 0, bI = 0;
-bool rF = 0, gF = 0, bF = 0;
-int rL = 0, gL = 0, bL = 0;
-bool rS = false, gS = false, bS = false;
+bool firstAntennaRun = true;
+unsigned long tAlive = 0;
 
 void loop() {
-
-  checkReconnectWiFi();
-
-  checkRGBled();
 
   // READ
   if (readUDP()) {
@@ -193,10 +216,12 @@ void loop() {
         checking_risposta = true;
         init_trovati();
         T = millis();
+        firstAntennaRun = true;
         while (checking_risposta) {
           if ((millis() - T) > TIMEOUT_RFID) {
             reset_all();
           }
+
           checkAntenna();
 
           if ((trovati[0] >= 0) && (trovati[0] <= 14)) {
@@ -216,100 +241,36 @@ void loop() {
         writeUDP(oUDP);
       } else {
         // FINE - AZIONAMENTO MOTORI DOPO VIDEO
+        // attesa slide WIN
+        delay(7000);
+
+        // giu
+        digitalWrite(REL_PIN_DOWN, LOW);
+        delay(TIME_DOWN*1000);
+        digitalWrite(REL_PIN_DOWN, HIGH);
+        // pausa
+        delay(TIME_PAUSE*1000);
+
+        // su
+        digitalWrite(REL_PIN_UP, LOW);
+        delay(TIME_UP*1000);
+        digitalWrite(REL_PIN_UP, HIGH);
+
+        // breathe
+        delay(1000);
       }
     }
   }
 }
 
-void blink_blue(int d) {
-  bI = 0;
-  bT = millis();
-  bF = true;
-  bL = d;
-}
-
-void blink_red(int d) {
-  rI = 0;
-  rT = millis();
-  rF = true;
-  rL = d;
-}
-
-void blink_green(int d) {
-  gI = 0;
-  gT = millis();
-  gF = true;
-  gL = d;
-}
-
-void checkRGBled() {
-  if (rF) {
-    if ((millis() - rT) > 100) {
-      if (rI < rL * 2) {
-        rT = millis();
-        digitalWrite(R_LED, rS);
-        rS = !rS;
-        rI++;
-      } else {
-        rF = false;
-      }
-    }
-  } else {
-    digitalWrite(R_LED, HIGH);
-  }
-
-  if (gF) {
-    if ((millis() - gT) > 100) {
-      if (gI < gL * 2) {
-        gT = millis();
-        digitalWrite(G_LED, gS);
-        gS = !gS;
-        gI++;
-      } else {
-        gF = false;
-      }
-    }
-  } else {
-    digitalWrite(G_LED, HIGH);
-  }
-
-  if (bF) {
-    if ((millis() - bT) > 100) {
-      if (bI < bL * 2) {
-        bT = millis();
-        digitalWrite(B_LED, bS);
-        bS = !bS;
-        bI++;
-      } else {
-        bF = false;
-      }
-    }
-  } else {
-    digitalWrite(B_LED, HIGH);
-  }
-}
 
 void reset_all() {
   checking_risposta = false;
   missione = 0;
   domanda = 0;
   wrong_answer = false;
-}
-
-void checkReconnectWiFi() {
-  if (WiFi.status() != WL_CONNECTED) {
-    if ((millis() - tReconnect) > 10000) {
-      if (DEB) Serial.println("NOT CONNECTED. RECONNECTING...");
-      blink_red(5);
-      tReconnect = millis();
-      WiFi.reconnect();
-    }
-  } else {
-    if ((millis() - tReconnect) > 4444) {
-      blink_red(1);
-      tReconnect = millis();
-    }
-  }
+  sentASK = false;
+  reconnect = false;
 }
 
 int c_atoi(char a) {
@@ -411,14 +372,17 @@ void checkAntenna() {
   if (reconnect) {
     if (DEB) Serial.println("RE-connecting...");
     reconnect = false;
-    localClient.connect(ip, port);
+    localClient.connect(RFID_ip, port);
   } else {
 
     // READ RESPONSE
     while (sentASK) {
       if ((millis() - t_ASK) > 50) {
         if ((millis() - t_ASK) < ASK_TIMEOUT) {
+
           lenASK = localClient.available();
+          delay(10);
+
           if (lenASK > 0) {
             if (DEB) {
               Serial.print("Received: ");
@@ -463,7 +427,11 @@ void checkAntenna() {
                 localClient.read();
 
                 if (DEB) PrintHex8(tempRFID, 8);
-                trovati[j] = check_code(tempRFID);
+                if (firstAntennaRun) {
+                  firstAntennaRun = false;
+                } else {
+                  trovati[j] = check_code(tempRFID);
+                }
               }
             }
 
@@ -533,13 +501,13 @@ void init_trovati() {
 }
 
 bool readUDP() {
+
   receiveBuffer[0] = '0';
   receiveBuffer[1] = '0';
 
   bool read = false;
 
   if (Udp.parsePacket()) {
-    blink_green(1);
     Udp.read(receiveBuffer, 2);
     iUDP[0] = receiveBuffer[0];
     iUDP[1] = receiveBuffer[1];
@@ -550,10 +518,7 @@ bool readUDP() {
 }
 
 void writeUDP(char msg[]) {
-
   for (uint8_t i = 0; i < 2; i++) {
-    blink_blue(1);
-
     Udp.beginPacket(bs_ip, UDPport);
     Udp.write(msg[0]);
     Udp.write(msg[1]);
