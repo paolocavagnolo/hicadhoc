@@ -1,0 +1,14 @@
+debug:
+    zone_touch: False       # True or False
+    cursore_mouse: False     # True or False
+
+video:
+    click_pausa: True       # True or False
+
+slide:
+    pausa_win: 3            #secondi
+    pausa_errore: 3         #secondi
+    pausa_obiettivi: 20      #secondi
+    tempo_pulsanti_arancioni: 0.6       #secondi
+    pausa_foto: 10           #secondi
+    pausa_finale4: 15       #secondi
